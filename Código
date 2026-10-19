@@ -1,0 +1,190 @@
+; Instruções de uso e informações relevantes
+; ------------------------------------------------------------
+; -> Como adicionar um novo teste:
+; 1. Adicione a entrada na tabela, usando o formato:
+;    .dw valor_de_entrada
+;
+; 2. Atualize N_CASOS com o total de entradas da tabela.
+;
+; Exemplo para testar a raiz de 64:
+;    .dw 64
+;
+; Cada entrada ocupa 2 bytes. O programa calcula a raiz
+; automaticamente e armazena o resultado na SRAM.
+;
+; -> Como verificar os resultados:
+; - A variável "resultados" contém os resultados na SRAM.
+; - Cada resultado ocupa 2 bytes: primeiro o byte baixo, depois o byte alto.
+; - Converta cada resultado de hexadecimal para decimal e depois basta dividir por 256.
+; -> Obs:
+; - O programa utiliza busca binária com 16 iterações.
+; - Os resultados são armazenados em Q8.8, sem ponto flutuante.
+; - A tabela de entradas está na memória Flash.
+; ------------------------------------------------------------
+.include "m328Pdef.inc"
+
+; Registradores utilizados pelo algoritmo
+.def ZERO = r2
+.def ALVO0 = r4
+.def ALVO1 = r5
+.def ALVO2 = r6
+.def ALVO3 = r7
+.def QUAD0 = r8
+.def QUAD1 = r9
+.def QUAD2 = r10
+.def QUAD3 = r11
+.def DL = r12
+.def DH = r13
+.def TMP = r14
+.def LOWL = r16
+.def LOWH = r17
+.def HIGHL = r18
+.def HIGHH = r19
+.def MIDL = r20
+.def MIDH = r21
+.def CONT = r22
+
+.equ ITERACOES = 16
+.equ N_CASOS = 19
+
+.cseg
+.org 0x0000
+    rjmp reset
+
+; Entradas de 16 bits armazenadas na Flash.
+; Para adicionar casos, atualize N_CASOS e inclua novos valores.
+.org 0x0034
+tabela:
+    .dw 1
+    .dw 2
+    .dw 3
+    .dw 4
+    .dw 5
+    .dw 6
+    .dw 7
+    .dw 8
+    .dw 9
+    .dw 10
+    .dw 12
+    .dw 15
+    .dw 20
+    .dw 30
+    .dw 45
+    .dw 60
+    .dw 75
+    .dw 80
+    .dw 100
+
+.dseg
+.org SRAM_START
+
+; Reserva 2 bytes por resultado (17 resultados = 34 bytes).
+resultados: .byte 2*N_CASOS
+
+.cseg
+
+reset:
+    ; Inicializa a pilha e os ponteiros da tabela e dos resultados.
+    ldi  r16, high(RAMEND)
+    out  SPH, r16
+    ldi  r16, low(RAMEND)
+    out  SPL, r16
+    ldi  ZL, low(tabela*2)
+    ldi  ZH, high(tabela*2)
+    ldi  XL, low(resultados)
+    ldi  XH, high(resultados)
+    ldi  r28, N_CASOS
+
+teste:
+    ; Lê a entrada, calcula a raiz e armazena o resultado na SRAM.
+    lpm r24, Z+
+    lpm r25, Z+
+    rcall sqrt_q8_8
+    st X+, r24
+    st X+, r25
+    dec r28
+    brne teste
+
+fim:
+    ; Mantém o programa parado após processar todos os casos.
+    rjmp fim
+
+; Calcula o quadrado de MIDH:MIDL e guarda o resultado em 32 bits.
+quadrado16:
+    mul MIDH, MIDH
+    movw QUAD2, r0
+    mul MIDL, MIDL
+    movw QUAD0, r0
+    mul MIDH, MIDL
+    clr TMP
+    lsl r0
+    rol r1
+    rol TMP
+    add QUAD1, r0
+    adc QUAD2, r1
+    adc QUAD3, TMP
+    ret
+
+; Calcula sqrt(x) em ponto fixo Q8.8 por busca binária.
+; Entrada: r25:r24 = x. Saída: r25:r24 = resultado Q8.8.
+sqrt_q8_8:
+    clr ALVO0
+    clr ALVO1
+    mov ALVO2, r24
+    mov ALVO3, r25
+    clr ZERO
+    clr LOWL
+    clr LOWH
+    ser HIGHL
+    ser HIGHH
+    ldi CONT, ITERACOES
+
+laco:
+    movw DL, HIGHL
+    sub DL, LOWL
+    sbc DH, LOWH
+    lsr DH
+    ror DL
+    movw MIDL, LOWL
+    adc MIDL, DL
+    adc MIDH, DH
+    rcall quadrado16
+    cp ALVO0, QUAD0
+    cpc ALVO1, QUAD1
+    cpc ALVO2, QUAD2
+    cpc ALVO3, QUAD3
+    brlo mid_grande
+    movw LOWL, MIDL
+    rjmp prox
+
+mid_grande:
+    movw HIGHL, MIDL
+    subi HIGHL, 1
+    sbci HIGHH, 0
+
+prox:
+    dec CONT
+    brne laco
+
+    ; Calcula o erro residual e aplica o arredondamento final.
+    movw r24, LOWL
+    movw MIDL, LOWL
+    rcall quadrado16
+    sub ALVO0, QUAD0
+    sbc ALVO1, QUAD1
+    sbc ALVO2, QUAD2
+    sbc ALVO3, QUAD3
+    cp LOWL, ALVO0
+    cpc LOWH, ALVO1
+    cpc ZERO, ALVO2
+    cpc ZERO, ALVO3
+    brsh fim_sqrt
+    adiw r24, 1
+    brcc fim_sqrt
+
+    ; Satura o resultado caso ultrapasse 16 bits.
+    ser r24
+    ser r25
+
+fim_sqrt:
+    ret
