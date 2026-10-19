@@ -1,0 +1,65 @@
+SCALE = 1000
+
+
+def sqrt_binaria_ponto_fixo(x):
+
+    # Verifica se a entrada e valida
+    if x < 0:
+        return -1
+
+    # Caso especial
+    if x == 0:
+        return 0
+
+    # Calcula o alvo da comparacao
+    alvo = x * SCALE * SCALE
+
+    # Define os limites da busca
+    low = 0
+    high = x * SCALE
+
+    if high < SCALE:
+        high = SCALE
+
+    # Busca binaria
+    while low <= high:
+
+        # Calcula o ponto medio
+        mid = (low + high) // 2
+
+        # Calcula o quadrado do ponto medio
+        mid_sq = mid * mid
+
+        # Compara o quadrado com o alvo
+        if mid_sq == alvo:
+            return mid
+
+        elif mid_sq < alvo:
+            low = mid + 1
+
+        else:
+            high = mid - 1
+
+    # Retorna a melhor aproximacao por baixo
+    return high
+
+
+def mostrar_ponto_fixo(valor_fix):
+
+    parte_inteira = valor_fix // SCALE
+    parte_fracionaria = valor_fix % SCALE
+
+    return str(parte_inteira) + "." + str(parte_fracionaria).zfill(3)
+
+
+# Programa principal
+x = int(input("Digite um valor inteiro para x: "))
+
+raiz_fix = sqrt_binaria_ponto_fixo(x)
+
+if raiz_fix < 0:
+    print("Nao existe raiz quadrada real para numero negativo.")
+
+else:
+    print("Raiz em ponto fixo =", raiz_fix)
+    print("Raiz aproximada =", mostrar_ponto_fixo(raiz_fix))
